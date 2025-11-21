@@ -1,0 +1,8 @@
+{
+  "name": "Puncture Pro On-Demand",
+  "description": "On-demand roadside assistance app connecting customers with tire technicians. Features real-time tracking, AI-powered photo verification, and digital receipts.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}

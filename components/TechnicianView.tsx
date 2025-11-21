@@ -8,10 +8,11 @@ import { MapVisual } from './MapVisual';
 interface TechnicianViewProps {
   activeJob: Job | null;
   onUpdateStatus: (jobId: string, status: JobStatus, extras?: Partial<Job>) => void;
+  isOnline: boolean;
+  setIsOnline: (online: boolean) => void;
 }
 
-export const TechnicianView: React.FC<TechnicianViewProps> = ({ activeJob, onUpdateStatus }) => {
-  const [isOnline, setIsOnline] = useState(true);
+export const TechnicianView: React.FC<TechnicianViewProps> = ({ activeJob, onUpdateStatus, isOnline, setIsOnline }) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<PhotoAnalysisResult | null>(null);
   const [otpInput, setOtpInput] = useState('');
@@ -42,8 +43,7 @@ export const TechnicianView: React.FC<TechnicianViewProps> = ({ activeJob, onUpd
     const reader = new FileReader();
     reader.onloadend = async () => {
       const base64 = reader.result as string;
-      // Strip prefix for API if needed, but generateContent inlineData handles data URL usually or needs raw base64
-      // GoogleGenAI expects just the base64 data part usually
+      // Strip prefix for API if needed
       const base64Data = base64.split(',')[1];
       
       const result = await analyzeTirePhoto(base64Data);
@@ -68,28 +68,47 @@ export const TechnicianView: React.FC<TechnicianViewProps> = ({ activeJob, onUpd
 
   if (!activeJob) {
     return (
-      <div className="h-full flex flex-col items-center justify-center bg-slate-50 p-6">
-        <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 transition-colors ${isOnline ? 'bg-green-100 text-green-600' : 'bg-slate-200 text-slate-400'}`}>
-          <Navigation size={48} />
+      <div className="h-full flex flex-col relative">
+        {/* Background Map */}
+        <MapVisual status="idle" />
+
+        {/* Top Status Indicator */}
+        <div className="absolute top-0 left-0 w-full p-4 z-10 bg-gradient-to-b from-white/80 to-transparent pt-6">
+           <div className="bg-white shadow-md rounded-full px-4 py-2 flex items-center gap-2 w-fit mx-auto">
+               <div className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></div>
+               <span className="text-sm font-medium text-slate-700">{isOnline ? "You are Online" : "You are Offline"}</span>
+           </div>
         </div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">
-          {isOnline ? "You are Online" : "You are Offline"}
-        </h2>
-        <p className="text-slate-500 text-center mb-8 max-w-xs">
-          {isOnline 
-            ? "Waiting for job requests in your area..." 
-            : "Go online to start receiving puncture repair jobs."}
-        </p>
         
-        <button
-          onClick={() => setIsOnline(!isOnline)}
-          className={`
-            px-8 py-3 rounded-full font-bold shadow-lg transition-transform active:scale-95
-            ${isOnline ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-green-600 text-white hover:bg-green-700'}
-          `}
-        >
-          {isOnline ? "Go Offline" : "Go Online"}
-        </button>
+        {/* Bottom Controls */}
+        <div className="mt-auto bg-white rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.1)] z-20 p-8 relative">
+          <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-8"></div>
+          
+          <div className="flex flex-col items-center justify-center">
+             <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-6 transition-colors ${isOnline ? 'bg-green-100 text-green-600' : 'bg-slate-100 text-slate-400'}`}>
+               <Navigation size={32} />
+             </div>
+             
+             <h2 className="text-2xl font-bold text-slate-900 mb-2">
+               {isOnline ? "Looking for Jobs" : "You are Offline"}
+             </h2>
+             <p className="text-slate-500 text-center mb-8 max-w-xs">
+               {isOnline 
+                 ? "Stay in this area. You will be notified when a customer needs help." 
+                 : "Go online to start receiving puncture repair jobs in your area."}
+             </p>
+             
+             <button
+               onClick={() => setIsOnline(!isOnline)}
+               className={`
+                 w-full py-4 rounded-xl font-bold shadow-lg transition-transform active:scale-[0.98]
+                 ${isOnline ? 'bg-slate-100 text-slate-700 hover:bg-slate-200' : 'bg-brand-600 text-white hover:bg-brand-700'}
+               `}
+             >
+               {isOnline ? "Go Offline" : "Go Online"}
+             </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -99,7 +118,7 @@ export const TechnicianView: React.FC<TechnicianViewProps> = ({ activeJob, onUpd
     return (
       <div className="h-full flex flex-col relative">
         <MapVisual status="idle" />
-        <div className="absolute inset-x-4 bottom-8 bg-white rounded-2xl p-6 shadow-2xl border border-slate-100 animate-slide-up">
+        <div className="absolute inset-x-4 bottom-8 bg-white rounded-2xl p-6 shadow-2xl border border-slate-100 animate-slide-up z-30">
           <div className="flex justify-between items-start mb-4">
              <div>
                <div className="flex items-center gap-2 mb-1">
@@ -120,8 +139,8 @@ export const TechnicianView: React.FC<TechnicianViewProps> = ({ activeJob, onUpd
             <span className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded"><MapPin size={14}/> 3.2 km</span>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <button className="py-3 rounded-xl font-bold text-slate-600 bg-slate-100" onClick={() => onUpdateStatus(activeJob.id, JobStatus.SEARCHING)}>Decline</button>
-            <button className="py-3 rounded-xl font-bold text-white bg-brand-600 shadow-lg shadow-brand-200" onClick={handleAccept}>Accept</button>
+            <button className="py-3 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200" onClick={() => onUpdateStatus(activeJob.id, JobStatus.SEARCHING)}>Decline</button>
+            <button className="py-3 rounded-xl font-bold text-white bg-brand-600 shadow-lg shadow-brand-200 hover:bg-brand-700" onClick={handleAccept}>Accept</button>
           </div>
         </div>
       </div>
@@ -160,7 +179,7 @@ export const TechnicianView: React.FC<TechnicianViewProps> = ({ activeJob, onUpd
              </div>
              <h3 className="text-xl font-bold">Navigate to Pickup</h3>
              <p className="text-slate-500">Customer is waiting at marked location.</p>
-             <button onClick={handleArrive} className="w-full py-4 bg-brand-600 text-white rounded-xl font-bold shadow-lg">Arrived at Location</button>
+             <button onClick={handleArrive} className="w-full py-4 bg-brand-600 text-white rounded-xl font-bold shadow-lg hover:bg-brand-700 transition-colors">Arrived at Location</button>
            </div>
         )}
 
@@ -168,7 +187,7 @@ export const TechnicianView: React.FC<TechnicianViewProps> = ({ activeJob, onUpd
           <div className="text-center space-y-6 mt-10">
              <h3 className="text-xl font-bold">Start Job</h3>
              <p className="text-slate-500">Verify customer and vehicle before starting.</p>
-             <button onClick={handleStart} className="w-full py-4 bg-brand-600 text-white rounded-xl font-bold shadow-lg">Start Work</button>
+             <button onClick={handleStart} className="w-full py-4 bg-brand-600 text-white rounded-xl font-bold shadow-lg hover:bg-brand-700 transition-colors">Start Work</button>
           </div>
         )}
 
@@ -230,7 +249,7 @@ export const TechnicianView: React.FC<TechnicianViewProps> = ({ activeJob, onUpd
                 <button 
                   disabled={!analysisResult?.isValid || otpInput.length !== 4}
                   onClick={handleComplete}
-                  className="bg-slate-900 text-white px-6 rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-slate-900 text-white px-6 rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-800"
                 >
                   Complete
                 </button>

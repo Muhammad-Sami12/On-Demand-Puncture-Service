@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserRole, Job, JobStatus, ServiceType, VehicleType } from './types';
 import { CustomerView } from './components/CustomerView';
 import { TechnicianView } from './components/TechnicianView';
@@ -12,6 +12,15 @@ const App: React.FC = () => {
   const [currentRole, setCurrentRole] = useState<UserRole>(UserRole.CUSTOMER);
   const [activeJob, setActiveJob] = useState<Job | null>(null);
   const [notification, setNotification] = useState<{ title: string; message: string } | null>(null);
+  
+  // Lifted state: Technician Online Status
+  const [isTechnicianOnline, setIsTechnicianOnline] = useState(true);
+  
+  // Ref to access current state inside setTimeout closure
+  const isTechnicianOnlineRef = useRef(isTechnicianOnline);
+  useEffect(() => {
+    isTechnicianOnlineRef.current = isTechnicianOnline;
+  }, [isTechnicianOnline]);
 
   // --- Mock Data Store ---
   // In a real app, this would be Firestore
@@ -37,10 +46,16 @@ const App: React.FC = () => {
     
     // Simulate finding a tech after 3 seconds
     setTimeout(() => {
-      if (newJob.status === JobStatus.SEARCHING) {
+      // Check if the job is still active (user hasn't cancelled) by checking if activeJob exists (handled in update logic mostly, but here we check flow)
+      // Importantly, check if Technician is Online
+      if (isTechnicianOnlineRef.current) {
+        // Tech is online, send offer
         updateJobStatus(newJob.id, JobStatus.OFFERED);
         // Mocking the push notification to technician
-        // In a real app, this happens via FCM
+      } else {
+        // Tech is offline
+        setNotification({ title: "Unavailable", message: "No online technicians found nearby." });
+        setActiveJob(null); // Cancel/Reset flow
       }
     }, 3000);
   };
@@ -139,6 +154,8 @@ const App: React.FC = () => {
           <TechnicianView 
             activeJob={activeJob} 
             onUpdateStatus={updateJobStatus}
+            isOnline={isTechnicianOnline}
+            setIsOnline={setIsTechnicianOnline}
           />
         )}
         {currentRole === UserRole.ADMIN && (

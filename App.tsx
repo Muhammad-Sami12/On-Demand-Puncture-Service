@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { UserRole, Job, JobStatus, ServiceType, VehicleType, GeoLocation } from './types';
 import { CustomerView } from './components/CustomerView';
@@ -6,27 +7,52 @@ import { AdminView } from './components/AdminView';
 import { Layout } from './components/Layout';
 import { AlertCircle, User, Wrench, ShieldCheck } from 'lucide-react';
 
-// Default to a location (e.g., Liberty Market Lahore) if GPS fails
-const DEFAULT_LOCATION: GeoLocation = { lat: 31.5102, lng: 74.3441 };
+// Default to Karachi (Saddar area) if GPS fails
+const KARACHI_FALLBACK: GeoLocation = { lat: 24.8607, lng: 67.0011 };
 
 const App: React.FC = () => {
   // --- Global State ---
   const [currentRole, setCurrentRole] = useState<UserRole>(UserRole.CUSTOMER);
   const [activeJob, setActiveJob] = useState<Job | null>(null);
   const [notification, setNotification] = useState<{ title: string; message: string } | null>(null);
-  
-  // Lifted state: Technician Online Status
   const [isTechnicianOnline, setIsTechnicianOnline] = useState(true);
   
   // --- Real-time Location State ---
-  // In a real app, these would be synced via Firebase/Socket.io
-  const [customerLocation, setCustomerLocation] = useState<GeoLocation>(DEFAULT_LOCATION);
+  const [userLocation, setUserLocation] = useState<GeoLocation>(KARACHI_FALLBACK);
   const [technicianLocation, setTechnicianLocation] = useState<GeoLocation>({ 
-    lat: DEFAULT_LOCATION.lat + 0.01, // Tech starts slightly away
-    lng: DEFAULT_LOCATION.lng + 0.01 
+    lat: KARACHI_FALLBACK.lat + 0.005, 
+    lng: KARACHI_FALLBACK.lng + 0.005 
   });
 
-  // Ref to access current state inside setTimeout closure
+  // --- Geolocation Tracking ---
+  useEffect(() => {
+    if (!("geolocation" in navigator)) {
+      console.error("Geolocation not supported");
+      return;
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const newLoc = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+        setUserLocation(newLoc);
+        console.log("GPS Updated:", newLoc);
+      },
+      (error) => {
+        console.warn("GPS Error, using Karachi fallback:", error.message);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
+
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
+
   const isTechnicianOnlineRef = useRef(isTechnicianOnline);
   useEffect(() => {
     isTechnicianOnlineRef.current = isTechnicianOnline;
@@ -39,37 +65,27 @@ const App: React.FC = () => {
     if (activeJob && [JobStatus.ACCEPTED, JobStatus.ARRIVED, JobStatus.IN_PROGRESS].includes(activeJob.status)) {
       interval = setInterval(() => {
         setTechnicianLocation(prev => {
-          const target = customerLocation;
-          const speed = 0.0001; // Movement speed factor
-          
-          // Simple linear interpolation to move tech closer to customer
+          const target = userLocation;
           const dx = target.lat - prev.lat;
           const dy = target.lng - prev.lng;
           const distance = Math.sqrt(dx*dx + dy*dy);
 
-          if (distance < 0.0005) return prev; // Arrived
+          if (distance < 0.0002) return prev;
 
           return {
-            lat: prev.lat + (dx * 0.05),
-            lng: prev.lng + (dy * 0.05)
+            lat: prev.lat + (dx * 0.1),
+            lng: prev.lng + (dy * 0.1)
           };
         });
-      }, 1000); // Update every second
+      }, 1000);
     }
 
     return () => clearInterval(interval);
-  }, [activeJob, customerLocation]);
+  }, [activeJob, userLocation]);
 
-
-  // --- Mock Data Store ---
   const [jobsHistory, setJobsHistory] = useState<Job[]>([]);
 
-  // --- Handlers ---
-
   const createJob = (serviceType: ServiceType, vehicleType: VehicleType, lat: number, lng: number) => {
-    // Update customer location to where they requested
-    setCustomerLocation({ lat, lng });
-
     const newJob: Job = {
       id: `JOB-${Date.now().toString().slice(-6)}`,
       customerId: 'cust_123',
@@ -80,23 +96,21 @@ const App: React.FC = () => {
       location: { lat, lng },
       createdAt: new Date(),
       price: calculatePrice(serviceType, vehicleType),
-      otp: Math.floor(1000 + Math.random() * 9000).toString(), // 4 digit OTP
+      otp: Math.floor(1000 + Math.random() * 9000).toString(),
     };
     setActiveJob(newJob);
-    setNotification({ title: "Request Sent", message: "Searching for nearby technicians..." });
+    setNotification({ title: "Requesting Help", message: "Broadcasting your GPS coordinates to Karachi techs..." });
     
-    // Reset Tech location to a random nearby spot for the demo
     setTechnicianLocation({
       lat: lat + (Math.random() * 0.01 - 0.005),
       lng: lng + (Math.random() * 0.01 - 0.005)
     });
 
-    // Simulate finding a tech after 3 seconds
     setTimeout(() => {
       if (isTechnicianOnlineRef.current) {
         updateJobStatus(newJob.id, JobStatus.OFFERED);
       } else {
-        setNotification({ title: "Unavailable", message: "No online technicians found nearby." });
+        setNotification({ title: "Unavailable", message: "No technicians active in your sector." });
         setActiveJob(null);
       }
     }, 3000);
@@ -106,7 +120,6 @@ const App: React.FC = () => {
     setActiveJob(prev => {
       if (!prev || prev.id !== jobId) return prev;
       const updated = { ...prev, status, ...extras, updatedAt: new Date() };
-      
       if (status === JobStatus.COMPLETED) {
         setJobsHistory(h => [updated, ...h]);
       }
@@ -115,20 +128,12 @@ const App: React.FC = () => {
   };
 
   const calculatePrice = (service: ServiceType, vehicle: VehicleType) => {
-    if (vehicle === VehicleType.BIKE) {
-      switch (service) {
-        case ServiceType.TUBE_PATCH: return 150;
-        case ServiceType.TUBELESS_PLUG: return 200;
-        case ServiceType.TOW: return 1500;
-        default: return 0;
-      }
-    } else {
-      switch (service) {
-        case ServiceType.TUBE_PATCH: return 400;
-        case ServiceType.TUBELESS_PLUG: return 500;
-        case ServiceType.TOW: return 3000;
-        default: return 0;
-      }
+    const multiplier = vehicle === VehicleType.BIKE ? 1 : 2.5;
+    switch (service) {
+      case ServiceType.TUBE_PATCH: return 250 * multiplier;
+      case ServiceType.TUBELESS_PLUG: return 300 * multiplier;
+      case ServiceType.TOW: return 1500 * multiplier;
+      default: return 0;
     }
   };
 
@@ -142,18 +147,12 @@ const App: React.FC = () => {
 
   return (
     <div className="font-sans text-slate-900">
-      {/* Dev Role Switcher */}
       <div className="fixed top-4 right-4 z-50 bg-white/90 backdrop-blur shadow-lg rounded-full p-1 flex gap-1 border border-gray-200">
         {(Object.values(UserRole) as UserRole[]).map((role) => (
           <button
             key={role}
             onClick={() => setCurrentRole(role)}
-            className={`
-              flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all
-              ${currentRole === role 
-                ? 'bg-brand-600 text-white shadow-md' 
-                : 'text-slate-500 hover:bg-gray-100'}
-            `}
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${currentRole === role ? 'bg-brand-600 text-white shadow-md' : 'text-slate-500 hover:bg-gray-100'}`}
           >
             {renderRoleIcon(role)}
             <span className="hidden sm:inline capitalize">{role}</span>
@@ -161,18 +160,14 @@ const App: React.FC = () => {
         ))}
       </div>
 
-      {/* Notification Toast */}
       {notification && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-fade-in-down">
-          <div className="bg-slate-800 text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-3 max-w-xs w-full">
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-fade-in-down w-full max-w-xs px-4">
+          <div className="bg-slate-800 text-white px-4 py-3 rounded-lg shadow-xl flex items-center gap-3">
             <AlertCircle size={20} className="text-brand-400" />
             <div>
               <h4 className="font-semibold text-sm">{notification.title}</h4>
               <p className="text-xs text-slate-300">{notification.message}</p>
             </div>
-            <button onClick={() => setNotification(null)} className="ml-auto text-slate-400 hover:text-white">
-              &times;
-            </button>
           </div>
         </div>
       )}
@@ -185,6 +180,7 @@ const App: React.FC = () => {
             onCancelJob={() => setActiveJob(null)}
             onCompleteFlow={() => setActiveJob(null)}
             technicianLocation={technicianLocation}
+            userLocation={userLocation}
           />
         )}
         {currentRole === UserRole.TECHNICIAN && (
@@ -195,14 +191,11 @@ const App: React.FC = () => {
             setIsOnline={setIsTechnicianOnline}
             technicianLocation={technicianLocation}
             setTechnicianLocation={setTechnicianLocation}
-            customerLocation={customerLocation}
+            customerLocation={userLocation}
           />
         )}
         {currentRole === UserRole.ADMIN && (
-          <AdminView 
-            activeJob={activeJob}
-            history={jobsHistory}
-          />
+          <AdminView activeJob={activeJob} history={jobsHistory} />
         )}
       </Layout>
     </div>

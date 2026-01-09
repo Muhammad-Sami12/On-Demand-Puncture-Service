@@ -1,4 +1,5 @@
-import React from 'react';
+
+import React, { useMemo } from 'react';
 import { Job, JobStatus } from '../types';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Users, DollarSign, Wrench, AlertTriangle } from 'lucide-react';
@@ -10,23 +11,34 @@ interface AdminViewProps {
 
 export const AdminView: React.FC<AdminViewProps> = ({ activeJob, history }) => {
   
-  // --- Mock Stats Data ---
-  const stats = [
-    { name: 'Mon', jobs: 12 },
-    { name: 'Tue', jobs: 19 },
-    { name: 'Wed', jobs: 3 },
-    { name: 'Thu', jobs: 5 },
-    { name: 'Fri', jobs: 22 },
-    { name: 'Sat', jobs: 30 },
-    { name: 'Sun', jobs: 15 },
-  ];
+  // Aggregating current session history for the chart
+  const stats = useMemo(() => {
+    const today = new Date().toLocaleDateString('en-US', { weekday: 'short' });
+    const currentCount = history.length + (activeJob ? 1 : 0);
+    
+    // Return only current data to satisfy the request to clear old logs
+    return [
+      { name: 'Mon', jobs: 0 },
+      { name: 'Tue', jobs: 0 },
+      { name: 'Wed', jobs: 0 },
+      { name: 'Thu', jobs: 0 },
+      { name: 'Fri', jobs: 0 },
+      { name: 'Sat', jobs: 0 },
+      { name: 'Sun', jobs: 0 },
+    ].map(day => {
+      if (day.name === today) return { ...day, jobs: currentCount };
+      return day;
+    });
+  }, [history, activeJob]);
+
+  const totalRevenue = history.reduce((acc, job) => acc + job.price, 0);
 
   return (
     <div className="h-full flex flex-col bg-slate-50 overflow-hidden">
       <div className="bg-white p-6 border-b border-slate-200">
         <div className="max-w-7xl mx-auto w-full">
             <h1 className="text-xl font-bold text-slate-900">Admin Dashboard</h1>
-            <p className="text-slate-500 text-sm">Overview of system performance</p>
+            <p className="text-slate-500 text-sm">Real-time session performance monitoring</p>
         </div>
       </div>
 
@@ -37,16 +49,16 @@ export const AdminView: React.FC<AdminViewProps> = ({ activeJob, history }) => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
                 <div className="flex items-center gap-2 text-slate-500 text-xs mb-1">
-                    <Users size={14} /> Total Techs
+                    <Users size={14} /> Active Techs
                 </div>
-                <div className="text-2xl font-bold text-slate-900">24</div>
-                <div className="text-xs text-green-500 font-medium">+2 online</div>
+                <div className="text-2xl font-bold text-slate-900">1</div>
+                <div className="text-xs text-green-500 font-medium">Session Live</div>
             </div>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
                 <div className="flex items-center gap-2 text-slate-500 text-xs mb-1">
-                    <DollarSign size={14} /> Revenue (Today)
+                    <DollarSign size={14} /> Session Revenue
                 </div>
-                <div className="text-2xl font-bold text-slate-900">Rs. 15,400</div>
+                <div className="text-2xl font-bold text-slate-900">Rs. {totalRevenue}</div>
             </div>
             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
                 <div className="flex items-center gap-2 text-slate-500 text-xs mb-1">
@@ -65,14 +77,14 @@ export const AdminView: React.FC<AdminViewProps> = ({ activeJob, history }) => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Chart */}
                 <div className="md:col-span-2 bg-white p-4 rounded-xl shadow-sm border border-slate-100 h-64 md:h-80">
-                <h3 className="font-bold text-sm text-slate-700 mb-4">Weekly Jobs</h3>
+                <h3 className="font-bold text-sm text-slate-700 mb-4">Session Job Volume</h3>
                 <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={stats}>
                     <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
                     <Tooltip cursor={{fill: '#f1f5f9'}} contentStyle={{borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'}} />
                     <Bar dataKey="jobs" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={30}>
                         {stats.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.jobs > 20 ? '#2563eb' : '#93c5fd'} />
+                        <Cell key={`cell-${index}`} fill={entry.jobs > 0 ? '#2563eb' : '#e2e8f0'} />
                         ))}
                     </Bar>
                     </BarChart>
@@ -113,16 +125,16 @@ export const AdminView: React.FC<AdminViewProps> = ({ activeJob, history }) => {
                             </div>
                         ) : (
                             <div className="p-8 text-center text-slate-400 text-sm">
-                            No active jobs at the moment.
+                            No active jobs in current session.
                             </div>
                         )}
                     </div>
 
                     {/* Recent History Snippet */}
                     <div>
-                        <h3 className="font-bold text-sm text-slate-700 mb-3">Recent Completed</h3>
+                        <h3 className="font-bold text-sm text-slate-700 mb-3">Session Completed</h3>
                         <div className="space-y-2">
-                            {history.slice(0, 3).map(job => (
+                            {history.slice(0, 5).map(job => (
                             <div key={job.id} className="flex justify-between items-center bg-white p-3 rounded-lg border border-slate-100 text-sm">
                                 <div>
                                 <div className="font-medium">{job.serviceType}</div>
@@ -131,7 +143,7 @@ export const AdminView: React.FC<AdminViewProps> = ({ activeJob, history }) => {
                                 <div className="font-bold text-green-600">Rs. {job.price}</div>
                             </div>
                             ))}
-                            {history.length === 0 && <div className="text-xs text-slate-400 italic">No history yet.</div>}
+                            {history.length === 0 && <div className="text-xs text-slate-400 italic">No session history yet.</div>}
                         </div>
                     </div>
                 </div>

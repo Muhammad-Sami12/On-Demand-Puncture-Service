@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { PhotoAnalysisResult, GroundedPlace, GeoLocation } from "../types";
 
@@ -8,7 +7,7 @@ export const findNearbyMechanics = async (location: GeoLocation): Promise<Ground
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: "Find 3 highly-rated tire repair shops or puncture mechanics very close to this location.",
+      contents: "Find 3-5 verified tire puncture repair shops or mechanics in Karachi near this specific location. Provide their names and direct Google Maps links.",
       config: {
         tools: [{ googleMaps: {} }],
         toolConfig: {
@@ -28,9 +27,9 @@ export const findNearbyMechanics = async (location: GeoLocation): Promise<Ground
     return chunks
       .filter((chunk: any) => chunk.maps)
       .map((chunk: any) => ({
-        title: chunk.maps.title,
+        title: chunk.maps.title || "Nearby Mechanic",
         uri: chunk.maps.uri,
-        snippet: chunk.maps.placeAnswerSources?.[0]?.reviewSnippets?.[0]
+        snippet: chunk.maps.placeAnswerSources?.[0]?.reviewSnippets?.[0] || "Highly rated repair service"
       }));
   } catch (error) {
     console.error("Maps Grounding Error:", error);

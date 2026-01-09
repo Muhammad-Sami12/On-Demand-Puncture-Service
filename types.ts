@@ -31,6 +31,13 @@ export interface GeoLocation {
   lng: number;
 }
 
+export interface GroundedPlace {
+  title: string;
+  uri: string;
+  snippet?: string;
+  location?: GeoLocation;
+}
+
 export interface Job {
   id: string;
   customerId: string;

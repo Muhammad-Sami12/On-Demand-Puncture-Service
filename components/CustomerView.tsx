@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
-import { Job, JobStatus, ServiceType, VehicleType, GeoLocation } from '../types';
+import { Job, JobStatus, ServiceType, VehicleType, GeoLocation, GroundedPlace } from '../types';
 import { SERVICE_ICONS, SERVICE_DESCRIPTIONS } from '../constants';
 import { MapVisual } from './MapVisual';
-import { Star, Phone, MessageSquare, ChevronRight, CheckCircle, Bike, Car, ChevronLeft, Crosshair } from 'lucide-react';
+import { findNearbyMechanics } from '../services/geminiService';
+import { Star, Phone, MessageSquare, ChevronRight, CheckCircle, Bike, Car, ChevronLeft, Crosshair, MapPin, ExternalLink } from 'lucide-react';
 
 interface CustomerViewProps {
   activeJob: Job | null;
@@ -21,66 +23,54 @@ export const CustomerView: React.FC<CustomerViewProps> = ({
 }) => {
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleType | null>(null);
   const [selectedService, setSelectedService] = useState<ServiceType>(ServiceType.TUBELESS_PLUG);
-  
-  // Location State
   const [myLocation, setMyLocation] = useState<GeoLocation | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [addressText, setAddressText] = useState("Detecting location...");
+  const [nearbyPlaces, setNearbyPlaces] = useState<GroundedPlace[]>([]);
+  const [loadingPlaces, setLoadingPlaces] = useState(false);
 
-  // --- Logic for Steps ---
   const isSearching = activeJob?.status === JobStatus.SEARCHING;
   const isAssigned = activeJob && [JobStatus.ACCEPTED, JobStatus.ARRIVED, JobStatus.IN_PROGRESS].includes(activeJob.status);
   const isCompleted = activeJob?.status === JobStatus.COMPLETED;
   const mapStatus = isSearching ? 'searching' : (isAssigned ? 'tracking' : 'idle');
 
-  // --- Geolocation Handler ---
   useEffect(() => {
-    if (!activeJob) {
-      detectLocation();
-    }
+    if (!activeJob) detectLocation();
   }, []);
+
+  useEffect(() => {
+    if (isSearching && myLocation) {
+      loadNearbyShops();
+    }
+  }, [isSearching]);
+
+  const loadNearbyShops = async () => {
+    if (!myLocation) return;
+    setLoadingPlaces(true);
+    const results = await findNearbyMechanics(myLocation);
+    setNearbyPlaces(results);
+    setLoadingPlaces(false);
+  };
 
   const detectLocation = () => {
     setIsLocating(true);
-    setAddressText("Locating...");
-    
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setMyLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          });
-          setAddressText("Current Location (GPS)");
+        (p) => {
+          const loc = { lat: p.coords.latitude, lng: p.coords.longitude };
+          setMyLocation(loc);
+          setAddressText("Using GPS Location");
           setIsLocating(false);
         },
-        (error) => {
-          console.error("Error getting location", error);
-          // Fallback
-          setMyLocation({ lat: 31.5102, lng: 74.3441 }); 
-          setAddressText("Liberty Market, Lahore (Default)");
+        () => {
+          const loc = { lat: 31.5102, lng: 74.3441 };
+          setMyLocation(loc);
+          setAddressText("Liberty Market, Lahore");
           setIsLocating(false);
         }
       );
-    } else {
-       setMyLocation({ lat: 31.5102, lng: 74.3441 });
-       setAddressText("Liberty Market, Lahore (Default)");
-       setIsLocating(false);
     }
   };
-
-  const getEstimatedPrice = (type: ServiceType, vehicle: VehicleType) => {
-     if (vehicle === VehicleType.BIKE) {
-        if (type === ServiceType.TUBE_PATCH) return 150;
-        if (type === ServiceType.TUBELESS_PLUG) return 200;
-        if (type === ServiceType.TOW) return 1500;
-     } else {
-        if (type === ServiceType.TUBE_PATCH) return 400;
-        if (type === ServiceType.TUBELESS_PLUG) return 500;
-        if (type === ServiceType.TOW) return 3000;
-     }
-     return 0;
-  }
 
   const handleCreateJob = () => {
     if (myLocation && selectedVehicle) {
@@ -88,46 +78,19 @@ export const CustomerView: React.FC<CustomerViewProps> = ({
     }
   };
 
-  // --- Render Handlers ---
-
   if (isCompleted && activeJob) {
     return (
-      <div className="h-full flex flex-col bg-white p-6 relative z-10 animate-fade-in items-center justify-center">
-        <div className="max-w-md w-full flex flex-col items-center text-center space-y-6">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-4">
+      <div className="h-full flex flex-col bg-white p-6 items-center justify-center text-center">
+        <div className="max-w-md w-full space-y-6">
+          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mx-auto">
             <CheckCircle size={40} />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900">Job Completed!</h2>
-          <p className="text-slate-500">Thank you for using Puncture Pro.</p>
-          
-          <div className="w-full bg-slate-50 p-4 rounded-lg border border-slate-200 text-left space-y-3">
-            <div className="flex justify-between border-b pb-2 border-slate-200">
-              <span className="text-slate-500">Vehicle</span>
-              <span className="font-medium">{activeJob.vehicleType}</span>
-            </div>
-            <div className="flex justify-between border-b pb-2 border-slate-200">
-              <span className="text-slate-500">Service</span>
-              <span className="font-medium">{activeJob.serviceType}</span>
-            </div>
-            <div className="flex justify-between border-b pb-2 border-slate-200">
-              <span className="text-slate-500">Total Paid</span>
-              <span className="font-bold text-brand-600">Rs. {activeJob.price}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Technician</span>
-              <span className="font-medium">Ali Khan</span>
-            </div>
+          <h2 className="text-2xl font-bold">Payment Complete</h2>
+          <div className="bg-slate-50 p-4 rounded-xl text-left space-y-2">
+            <div className="flex justify-between"><span>Service</span><span className="font-bold">{activeJob.serviceType}</span></div>
+            <div className="flex justify-between"><span>Amount</span><span className="font-bold text-brand-600">Rs. {activeJob.price}</span></div>
           </div>
-
-          <button 
-            onClick={() => {
-              setSelectedVehicle(null); 
-              onCompleteFlow();
-            }}
-            className="w-full py-3.5 bg-slate-900 text-white rounded-xl font-semibold hover:bg-slate-800 transition-colors shadow-lg mt-8"
-          >
-            Done
-          </button>
+          <button onClick={onCompleteFlow} className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold">Done</button>
         </div>
       </div>
     );
@@ -135,158 +98,110 @@ export const CustomerView: React.FC<CustomerViewProps> = ({
 
   return (
     <div className="h-full flex flex-col relative">
-      {/* Map Layer */}
       <MapVisual 
         status={mapStatus} 
-        myLocation={myLocation || {lat: 0, lng: 0}}
+        myLocation={myLocation || undefined}
         targetLocation={isAssigned ? technicianLocation : undefined}
+        groundedPlaces={nearbyPlaces}
       />
 
-      {/* Top Bar Overlay */}
-      <div className="absolute top-0 left-0 w-full p-4 z-10 pt-6 pointer-events-none">
-        <div className="bg-white shadow-md rounded-full pl-4 pr-2 py-2 flex items-center justify-between gap-2 max-w-[90%] md:max-w-md mx-auto pointer-events-auto">
-           <div className="flex items-center gap-2 overflow-hidden">
-             <div className={`w-2 h-2 rounded-full shrink-0 ${isLocating ? 'bg-yellow-500 animate-ping' : 'bg-brand-500'}`}></div>
-             <span className="text-sm font-medium text-slate-700 truncate">{addressText}</span>
+      <div className="absolute top-0 left-0 w-full p-4 z-10 pt-6">
+        <div className="bg-white/95 backdrop-blur shadow-md rounded-full px-4 py-2 flex items-center justify-between max-w-md mx-auto">
+           <div className="flex items-center gap-2">
+             <div className={`w-2 h-2 rounded-full ${isLocating ? 'bg-yellow-500 animate-ping' : 'bg-brand-500'}`}></div>
+             <span className="text-xs font-bold text-slate-700 truncate max-w-[150px]">{addressText}</span>
            </div>
-           <button onClick={detectLocation} className="p-1.5 bg-slate-100 rounded-full text-slate-600 active:scale-90 transition-transform">
-             <Crosshair size={16}/>
-           </button>
+           <button onClick={detectLocation} className="text-slate-400 hover:text-brand-600"><Crosshair size={16}/></button>
         </div>
       </div>
 
-      {/* Bottom Sheet / Controls */}
-      <div className="mt-auto z-20 w-full p-0 md:p-6 pointer-events-none">
-        <div className="bg-white rounded-t-3xl md:rounded-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.1)] md:shadow-xl p-6 relative max-w-full md:max-w-md mx-auto pointer-events-auto">
-          <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6"></div>
+      <div className="mt-auto z-20 w-full p-0 md:p-6">
+        <div className="bg-white rounded-t-3xl md:rounded-3xl shadow-2xl p-6 max-w-md mx-auto">
+          <div className="w-12 h-1 bg-slate-200 rounded-full mx-auto mb-6"></div>
 
           {!activeJob ? (
             !selectedVehicle ? (
-              // --- Screen 1: Vehicle Selection ---
-              <div className="space-y-6 animate-slide-up">
-                <h2 className="text-xl font-bold text-slate-900">What vehicle needs help?</h2>
+              <div className="space-y-6">
+                <h2 className="text-xl font-bold">Request Assistance</h2>
                 <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={() => setSelectedVehicle(VehicleType.BIKE)}
-                    className="group flex flex-col items-center justify-center p-6 rounded-2xl border-2 border-slate-100 bg-slate-50 hover:border-brand-500 hover:bg-brand-50 transition-all"
-                  >
-                    <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center text-slate-700 mb-4 shadow-sm group-hover:scale-110 transition-transform">
-                      <Bike size={32} />
-                    </div>
-                    <span className="font-bold text-slate-900">Bike</span>
-                    <span className="text-xs text-slate-400 mt-1">Start from Rs. 150</span>
-                  </button>
-
-                  <button
-                    onClick={() => setSelectedVehicle(VehicleType.CAR)}
-                    className="group flex flex-col items-center justify-center p-6 rounded-2xl border-2 border-slate-100 bg-slate-50 hover:border-brand-500 hover:bg-brand-50 transition-all"
-                  >
-                     <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center text-slate-700 mb-4 shadow-sm group-hover:scale-110 transition-transform">
-                      <Car size={32} />
-                    </div>
-                    <span className="font-bold text-slate-900">Car</span>
-                    <span className="text-xs text-slate-400 mt-1">Start from Rs. 400</span>
-                  </button>
-                </div>
-              </div>
-            ) : (
-              // --- Screen 2: Service Selection ---
-              <div className="space-y-6 animate-slide-up">
-                <div className="flex items-center gap-2 mb-2">
-                  <button onClick={() => setSelectedVehicle(null)} className="p-1 -ml-2 text-slate-400 hover:text-slate-900">
-                    <ChevronLeft size={24}/>
-                  </button>
-                  <h2 className="text-xl font-bold text-slate-900">Select {selectedVehicle} Service</h2>
-                </div>
-                
-                <div className="grid grid-cols-3 gap-3">
-                  {Object.values(ServiceType).map((type) => (
-                    <button
-                      key={type}
-                      onClick={() => setSelectedService(type)}
-                      className={`
-                        flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all
-                        ${selectedService === type 
-                          ? 'border-brand-500 bg-brand-50 text-brand-700' 
-                          : 'border-slate-100 bg-white text-slate-500 hover:bg-slate-50'}
-                      `}
-                    >
-                      <div className="mb-2">{SERVICE_ICONS[type]}</div>
-                      <span className="text-[10px] font-medium text-center leading-tight">{type}</span>
+                  {[VehicleType.BIKE, VehicleType.CAR].map(v => (
+                    <button key={v} onClick={() => setSelectedVehicle(v)} className="p-6 rounded-2xl bg-slate-50 border-2 border-transparent hover:border-brand-500 transition-all flex flex-col items-center">
+                      <div className="mb-2">{v === VehicleType.BIKE ? <Bike size={32}/> : <Car size={32}/>}</div>
+                      <span className="font-bold">{v}</span>
                     </button>
                   ))}
                 </div>
-                
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-semibold text-slate-900">{selectedService}</span>
-                    <span className="font-bold text-lg text-slate-900">
-                      Rs. {getEstimatedPrice(selectedService, selectedVehicle)}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500">{SERVICE_DESCRIPTIONS[selectedService]}</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setSelectedVehicle(null)}><ChevronLeft/></button>
+                  <h2 className="text-xl font-bold">{selectedVehicle} Services</h2>
                 </div>
-
-                <button
-                  disabled={isLocating || !myLocation}
-                  onClick={handleCreateJob}
-                  className="w-full py-3.5 bg-slate-900 text-white rounded-xl font-bold text-lg shadow-lg hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isLocating ? "Detecting Location..." : (
-                     <>Request Technician <ChevronRight size={20}/></>
-                  )}
-                </button>
+                <div className="grid grid-cols-3 gap-2">
+                  {Object.values(ServiceType).map(t => (
+                    <button key={t} onClick={() => setSelectedService(t)} className={`p-3 rounded-xl border-2 text-[10px] font-bold ${selectedService === t ? 'border-brand-500 bg-brand-50' : 'bg-white'}`}>
+                      {SERVICE_ICONS[t]}<div className="mt-1">{t}</div>
+                    </button>
+                  ))}
+                </div>
+                <button onClick={handleCreateJob} className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold">Request Now</button>
               </div>
             )
           ) : (
-            // --- Active Job Mode ---
             <div className="space-y-4">
               {isSearching && (
-                <div className="text-center py-4">
-                  <div className="animate-spin w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full mx-auto mb-3"></div>
-                  <h3 className="font-bold text-lg">Finding nearby tech...</h3>
-                  <p className="text-slate-500 text-sm">Looking for experts in {activeJob.vehicleType} repair.</p>
-                  <button onClick={onCancelJob} className="mt-4 text-red-500 text-sm font-medium">Cancel Request</button>
+                <div>
+                  <div className="text-center py-4">
+                    <div className="animate-spin w-8 h-8 border-4 border-brand-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+                    <h3 className="font-bold">Locating Technicians...</h3>
+                  </div>
+
+                  {/* Real Results from Gemini Maps Grounding */}
+                  <div className="mt-4 space-y-3">
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nearby Mechanics Found</h4>
+                    {loadingPlaces ? (
+                      <div className="space-y-2">
+                        <div className="h-12 bg-slate-100 animate-pulse rounded-lg"></div>
+                        <div className="h-12 bg-slate-100 animate-pulse rounded-lg"></div>
+                      </div>
+                    ) : (
+                      nearbyPlaces.map((place, i) => (
+                        <a key={i} href={place.uri} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-brand-50 transition-colors group">
+                          <div className="bg-white p-2 rounded-lg group-hover:bg-brand-100"><MapPin size={16}/></div>
+                          <div className="flex-1 overflow-hidden">
+                            <div className="font-bold text-sm truncate">{place.title}</div>
+                            {place.snippet && <div className="text-[10px] text-slate-500 truncate">{place.snippet}</div>}
+                          </div>
+                          <ExternalLink size={14} className="text-slate-300"/>
+                        </a>
+                      ))
+                    )}
+                  </div>
+                  <button onClick={onCancelJob} className="w-full mt-6 text-red-500 text-sm font-bold">Cancel Request</button>
                 </div>
               )}
 
               {isAssigned && (
                 <div className="animate-fade-in">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-bold text-lg">Technician en route</h3>
-                    <span className="bg-brand-100 text-brand-700 px-2 py-1 rounded text-xs font-bold">
-                      {/* Simple distance calc for demo */}
-                      {myLocation && technicianLocation ? 
-                        `${(Math.sqrt(Math.pow(myLocation.lat - technicianLocation.lat, 2) + Math.pow(myLocation.lng - technicianLocation.lng, 2)) * 111).toFixed(1)} km` 
-                        : 'Calculating...'}
-                    </span>
+                    <h3 className="font-bold">Technician En Route</h3>
+                    <span className="text-xs bg-brand-100 text-brand-700 px-2 py-1 rounded-full font-bold">Arriving in 8 mins</span>
                   </div>
-                  
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="w-14 h-14 bg-slate-200 rounded-full overflow-hidden border-2 border-white shadow-md">
-                      <img src="https://i.pravatar.cc/150?u=tech" alt="Tech" />
+                  <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl">
+                    <img src="https://i.pravatar.cc/100?u=tech" className="w-12 h-12 rounded-full border-2 border-white shadow" />
+                    <div className="flex-1">
+                      <div className="font-bold">Ali Khan</div>
+                      <div className="text-xs text-yellow-600 flex items-center gap-1"><Star size={12} fill="currentColor"/> 4.9 (120 reviews)</div>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-slate-900">Ali Khan</h4>
-                      <div className="flex items-center text-yellow-500 text-xs">
-                        <Star size={12} fill="currentColor" />
-                        <span className="ml-1 font-medium text-slate-600">4.9 (120 jobs)</span>
-                      </div>
-                      <p className="text-xs text-slate-400">Honda CD 70 • LEZ-1234</p>
-                    </div>
-                    <div className="ml-auto flex gap-2">
-                      <button className="p-2 bg-slate-100 rounded-full text-slate-600"><MessageSquare size={20}/></button>
-                      <button className="p-2 bg-green-100 rounded-full text-green-600"><Phone size={20}/></button>
+                    <div className="flex gap-2">
+                      <button className="p-2 bg-white rounded-full shadow-sm text-slate-600"><MessageSquare size={18}/></button>
+                      <button className="p-2 bg-white rounded-full shadow-sm text-green-600"><Phone size={18}/></button>
                     </div>
                   </div>
-
-                  <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl mb-4">
-                    <p className="text-xs text-blue-800 font-medium text-center">
-                      Share this code when job is done:
-                    </p>
-                    <div className="text-3xl font-mono font-bold text-center text-blue-900 tracking-widest mt-1">
-                      {activeJob.otp}
-                    </div>
+                  <div className="mt-4 bg-blue-600 text-white p-4 rounded-2xl text-center">
+                    <div className="text-[10px] opacity-80 uppercase tracking-widest font-bold">Completion Code</div>
+                    <div className="text-2xl font-mono font-bold tracking-[0.5em]">{activeJob.otp}</div>
                   </div>
                 </div>
               )}

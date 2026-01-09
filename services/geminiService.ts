@@ -1,14 +1,47 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import { PhotoAnalysisResult } from "../types";
 
-// Initialize Gemini Client
-// NOTE: API Key is expected to be in process.env.API_KEY
+import { GoogleGenAI, Type } from "@google/genai";
+import { PhotoAnalysisResult, GroundedPlace, GeoLocation } from "../types";
+
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+export const findNearbyMechanics = async (location: GeoLocation): Promise<GroundedPlace[]> => {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: "Find 3 highly-rated tire repair shops or puncture mechanics very close to this location.",
+      config: {
+        tools: [{ googleMaps: {} }],
+        toolConfig: {
+          retrievalConfig: {
+            latLng: {
+              latitude: location.lat,
+              longitude: location.lng
+            }
+          }
+        }
+      },
+    });
+
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
+    if (!chunks) return [];
+
+    return chunks
+      .filter((chunk: any) => chunk.maps)
+      .map((chunk: any) => ({
+        title: chunk.maps.title,
+        uri: chunk.maps.uri,
+        snippet: chunk.maps.placeAnswerSources?.[0]?.reviewSnippets?.[0]
+      }));
+  } catch (error) {
+    console.error("Maps Grounding Error:", error);
+    return [];
+  }
+};
 
 export const analyzeTirePhoto = async (base64Image: string): Promise<PhotoAnalysisResult> => {
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: {
         parts: [
           {
@@ -32,33 +65,25 @@ export const analyzeTirePhoto = async (base64Image: string): Promise<PhotoAnalys
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            isValid: { type: Type.BOOLEAN, description: "True if a tire is visible and quality is acceptable." },
+            isValid: { type: Type.BOOLEAN },
             brightness: { type: Type.STRING, enum: ["low", "ok", "high"] },
             blur: { type: Type.STRING, enum: ["high", "ok"] },
             isTire: { type: Type.BOOLEAN },
-            feedback: { type: Type.STRING, description: "Short constructive feedback for the technician." }
+            feedback: { type: Type.STRING }
           },
           required: ["isValid", "brightness", "blur", "isTire", "feedback"]
         }
       }
     });
 
-    const resultText = response.text;
-    if (!resultText) {
-       throw new Error("Empty response from AI");
-    }
-    
-    return JSON.parse(resultText) as PhotoAnalysisResult;
-
+    return JSON.parse(response.text || '{}') as PhotoAnalysisResult;
   } catch (error) {
-    console.error("Gemini Analysis Error:", error);
-    // Fallback in case of error to allow flow to continue in demo
     return {
       isValid: true,
       brightness: 'ok',
       blur: 'ok',
       isTire: true,
-      feedback: "AI validation unavailable. Proceeding manually."
+      feedback: "Validation skipped."
     };
   }
 };
